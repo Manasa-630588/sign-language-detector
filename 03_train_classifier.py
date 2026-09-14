@@ -18,9 +18,9 @@ from tensorflow.keras import layers, models
 import pickle
 import os
 
-DATA_CSV = "../data/landmarks.csv"
-MODEL_OUT = "../models/sign_classifier.h5"
-ENCODER_OUT = "../models/label_encoder.pkl"
+DATA_CSV = "data/landmarks.csv"
+MODEL_OUT = "models/sign_classifier.h5"
+ENCODER_OUT = "models/label_encoder.pkl"
 
 
 def main():
