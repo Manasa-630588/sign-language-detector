@@ -2,5 +2,4 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
-*.h5
 hand_landmarker.task
