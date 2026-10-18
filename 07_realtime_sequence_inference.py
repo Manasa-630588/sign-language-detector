@@ -1,16 +1,18 @@
 """
-Real-time detection for motion signs.
+Real-time detection for motion signs (66 features per frame).
 
 UPDATED:
-- uses the same 66 features per frame as 05_collect_sequence_data.py
-- only predicts when a hand was visible for most of the last 30 frames
-- shows a sign only after 3 predictions in a row agree (less flicker)
-- the IDLE class means "no sign", so nothing is displayed
+- when the hand leaves the frame, the last window of frames is kept for
+  GRACE_FRAMES, so a quick sign followed by pulling your hand away still registers
+- a detected sign stays on screen for HOLD_SECONDS
+- when the hand returns after a gap, a fresh window is started
+- IDLE means "no sign", so nothing is displayed for it
 
 Run with:
     python 07_realtime_sequence_inference.py
 """
 
+import time
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -23,12 +25,14 @@ from mediapipe.tasks.python import vision
 MODEL_PATH = "hand_landmarker.task"
 CLASSIFIER_PATH = "models/sequence_classifier.h5"
 ENCODER_PATH = "models/sequence_label_encoder.pkl"
+
 SEQUENCE_LENGTH = 30
-NUM_FEATURES = 66
-CONFIDENCE_THRESHOLD = 0.85
+CONFIDENCE_THRESHOLD = 0.85   # how sure the model must be
+AGREE_COUNT = 3               # predictions in a row that must agree
 PREDICT_EVERY_N_FRAMES = 3
-AGREE_COUNT = 3
-MIN_HAND_FRACTION = 0.6
+HOLD_SECONDS = 1.5            # how long a detected sign stays on screen
+GRACE_FRAMES = 45             # keep the last window this long after the hand leaves
+GAP_RESET_FRAMES = 10         # hand gone this long -> start a fresh window on return
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -48,7 +52,7 @@ def extract_features(hand_landmarks):
     max_dist = float(np.max(np.linalg.norm(rel, axis=1)))
     shape = (rel / max_dist).flatten() if max_dist > 0 else rel.flatten()
     extra = np.array([wrist[0], wrist[1], max_dist], dtype=np.float32)
-    return np.concatenate([shape, extra])
+    return np.concatenate([shape, extra])  # 66 values
 
 
 def draw_landmarks(frame, hand_landmarks):
@@ -74,10 +78,11 @@ def main():
     detector = vision.HandLandmarker.create_from_options(options)
 
     buffer = deque(maxlen=SEQUENCE_LENGTH)
-    present = deque(maxlen=SEQUENCE_LENGTH)
     recent = deque(maxlen=AGREE_COUNT)
     display_label = ""
     display_confidence = 0.0
+    hold_until = 0.0
+    missing = 0
     frame_count = 0
 
     cap = cv2.VideoCapture(0)
@@ -96,30 +101,37 @@ def main():
         result = detector.detect(mp_image)
 
         if result.hand_landmarks:
+            if missing >= GAP_RESET_FRAMES:
+                buffer.clear()
+                recent.clear()
+            missing = 0
             hand_landmarks = result.hand_landmarks[0]
             draw_landmarks(frame, hand_landmarks)
             buffer.append(extract_features(hand_landmarks))
-            present.append(1)
         else:
-            buffer.append(np.zeros(NUM_FEATURES, dtype=np.float32))
-            present.append(0)
+            missing += 1
+            if missing > GRACE_FRAMES:
+                buffer.clear()
+                recent.clear()
 
         frame_count += 1
-        if len(buffer) == SEQUENCE_LENGTH and frame_count % PREDICT_EVERY_N_FRAMES == 0:
-            if sum(present) < MIN_HAND_FRACTION * SEQUENCE_LENGTH:
-                display_label = ""
-                recent.clear()
-            else:
-                seq = np.array(buffer).reshape(1, SEQUENCE_LENGTH, NUM_FEATURES)
-                probs = model.predict(seq, verbose=0)[0]
-                idx = int(np.argmax(probs))
-                conf = float(probs[idx])
-                label = encoder.inverse_transform([idx])[0] if conf >= CONFIDENCE_THRESHOLD else None
-                recent.append(label)
-                if len(recent) == AGREE_COUNT and len(set(recent)) == 1:
-                    chosen = recent[0]
-                    display_label = "" if chosen in (None, "IDLE") else chosen
+        can_predict = len(buffer) == SEQUENCE_LENGTH and missing <= GRACE_FRAMES
+        if can_predict and frame_count % PREDICT_EVERY_N_FRAMES == 0:
+            seq = np.array(buffer, dtype=np.float32).reshape(1, SEQUENCE_LENGTH, -1)
+            probs = model.predict(seq, verbose=0)[0]
+            idx = int(np.argmax(probs))
+            conf = float(probs[idx])
+            label = encoder.inverse_transform([idx])[0] if conf >= CONFIDENCE_THRESHOLD else None
+            recent.append(label)
+            if len(recent) == AGREE_COUNT and len(set(recent)) == 1:
+                chosen = recent[0]
+                if chosen not in (None, "IDLE"):
+                    display_label = chosen
                     display_confidence = conf
+                    hold_until = time.time() + HOLD_SECONDS
+
+        if display_label and time.time() > hold_until:
+            display_label = ""
 
         if display_label:
             cv2.putText(frame, f"{display_label} ({display_confidence:.2f})",
