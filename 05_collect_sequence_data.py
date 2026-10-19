@@ -27,7 +27,7 @@ from mediapipe.tasks.python import vision
 MODEL_PATH = "hand_landmarker.task"
 
 # ---- CONFIG ----
-CLASSES = ["J", "Z", "HELLO", "THANKS", "PLEASE", "YES", "NO", "SORRY", "IDLE"]
+CLASSES = ["J", "Z", "HELLO", "THANKS", "PLEASE", "YES", "NO", "IDLE"]
 SEQUENCE_LENGTH = 30
 SAMPLES_PER_CLASS_TARGET = 40
 OUTPUT_DIR = "data/sequences"
