@@ -149,7 +149,7 @@ class MotionPredictor:
     """Same logic as 07_realtime_sequence_inference.py, plus an 'event' that
     fires once per detected sign so the app can add it to the sentence."""
 
-    def __init__(self, model, encoder, seq_len=30, threshold=0.85, agree=3,
+    def __init__(self, model, encoder, seq_len=30, threshold=0.85, agree=2,
                  predict_every=3, hold_seconds=1.5, grace_frames=45,
                  gap_reset_frames=10, cooldown_seconds=2.0):
         self.model = model

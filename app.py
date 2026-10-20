@@ -33,12 +33,24 @@ BASE = Path(__file__).resolve().parent
 st.set_page_config(page_title="Sign Language Detector", page_icon="🤟", layout="wide")
 
 
+class FastModel:
+    """Wraps a Keras model in tf.function so repeated single-sample calls are faster."""
+
+    def __init__(self, model):
+        self._fn = tf.function(
+            lambda x: model(x, training=False), reduce_retracing=True
+        )
+
+    def __call__(self, x, training=False):
+        return self._fn(tf.convert_to_tensor(x))
+
+
 @st.cache_resource(show_spinner="Loading models...")
 def load_resources():
     models_dir = BASE / "models"
-    static_model = tf.keras.models.load_model(
+    static_model = FastModel(tf.keras.models.load_model(
         str(models_dir / "sign_classifier.h5"), compile=False
-    )
+    ))
     with open(models_dir / "label_encoder.pkl", "rb") as f:
         static_enc = pickle.load(f)
 
@@ -46,7 +58,7 @@ def load_resources():
     mm = models_dir / "sequence_classifier.h5"
     me = models_dir / "sequence_label_encoder.pkl"
     if mm.exists() and me.exists():
-        motion_model = tf.keras.models.load_model(str(mm), compile=False)
+        motion_model = FastModel(tf.keras.models.load_model(str(mm), compile=False))
         with open(me, "rb") as f:
             motion_enc = pickle.load(f)
 
@@ -184,6 +196,8 @@ if ss.camera_on:
 
     detector = res["detector"]
     frame_idx = 0
+    fps = 0.0
+    last_time = time.time()
     while ss.camera_on:
         ok, frame = cap.read()
         if not ok:
@@ -198,6 +212,10 @@ if ss.camera_on:
             draw_landmarks(frame, hand)
 
         now = time.time()
+        dt = now - last_time
+        last_time = now
+        if dt > 0:
+            fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps else 1.0 / dt
         eng["static"].threshold = ss.static_thr
         eng["acc"].hold_seconds = ss.hold_time
         if eng["motion"] is not None:
@@ -218,8 +236,13 @@ if ss.camera_on:
                 show_sentence()
             hold_text = "Reading motion..."
 
-        frame_slot.image(frame, channels="BGR")
-        if frame_idx % 2 == 0:
+        # send a smaller JPEG to the browser (much cheaper than a full-size PNG)
+        h, w = frame.shape[:2]
+        small = cv2.resize(frame, (480, int(h * 480 / w)))
+        cv2.putText(small, f"FPS: {fps:.0f}", (8, 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        frame_slot.image(small, channels="BGR", output_format="JPEG")
+        if frame_idx % 4 == 0:
             pred_slot.markdown(f"# {label}" if label else "# —")
             conf_slot.progress(min(max(conf, 0.0), 1.0), text=f"Confidence {conf:.0%}")
             hold_slot.progress(min(max(progress, 0.0), 1.0), text=hold_text)
