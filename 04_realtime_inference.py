@@ -20,7 +20,7 @@ from mediapipe.tasks.python import vision
 MODEL_PATH = "hand_landmarker.task"
 CLASSIFIER_PATH = "models/sign_classifier.h5"
 ENCODER_PATH = "models/label_encoder.pkl"
-CONFIDENCE_THRESHOLD = 0.75
+CONFIDENCE_THRESHOLD = 0.30
 SMOOTHING_WINDOW = 8
 
 HAND_CONNECTIONS = [

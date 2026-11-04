@@ -26,7 +26,7 @@ from mediapipe.tasks.python import vision
 MODEL_PATH = "hand_landmarker.task"
 
 # ---- CONFIG: edit this list to your target signs ----
-CLASSES = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
+CLASSES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','10']
 # example: replace with your full set
 SAMPLES_PER_CLASS_TARGET = 300
 OUTPUT_CSV = "data/landmarks.csv"
@@ -121,12 +121,18 @@ def main():
             break
         elif key == ord("n"):
             class_idx = (class_idx + 1) % len(CLASSES)
-        elif key == ord(" ") and landmark_vector is not None:
+            
+        # AUTOMATIC CAPTURE: Automatically saves if hand is detected 
+        # and we haven't hit the target yet for this label
+        elif landmark_vector is not None and counts.get(current_label, 0) < SAMPLES_PER_CLASS_TARGET:
             row = list(landmark_vector) + [current_label]
             rows.append(row)
             counts[current_label] = counts.get(current_label, 0) + 1
-            print(f"Captured sample for '{current_label}' "
+            print(f"Auto-captured sample for '{current_label}' "
                   f"({counts[current_label]}/{SAMPLES_PER_CLASS_TARGET})")
+            
+            # Optional: small pause (e.g., 100 milliseconds) so it doesn't capture too fast
+            cv2.waitKey(100)
 
     cap.release()
     cv2.destroyAllWindows()
